@@ -1,0 +1,136 @@
+services:
+  db:
+    container_name: db
+    env_file:
+      - .env
+    image: postgres
+    restart: always
+    networks:
+      - main
+    volumes:
+      - ./volume/db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d ${POSTGRES_DB} -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  django:
+    container_name: django
+    depends_on:
+      vault:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    build:
+      context: ./
+      dockerfile: ./images/backend/Dockerfile
+    environment:
+      - VAULT_ADDR=${VAULT_INIT_ADDR}
+    restart: always
+    volumes:
+      - ./volume/vault-data:/vault/file
+      - ./ssl/certs:/etc/ssl/certs
+      - ./ssl/private:/etc/ssl/private
+    networks:
+      - main 
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f localhost:8000/api/ || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  nginx:
+    container_name: nginx
+    depends_on:
+      django:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+    environment:
+      - VAULT_ADDR=${VAULT_INIT_ADDR}
+    build:
+      context: ./images/build
+      dockerfile: Dockerfile
+    ports:
+      - '8000:8000'
+    restart: always
+    networks:
+      - main
+    volumes:
+      - /var/www/html
+      - ./ssl/certs:/etc/ssl/certs
+      - ./ssl/private:/etc/ssl/private
+      - ./volume/vault-data:/vault/file
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fk https://localhost:8000/ || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  vault:
+    image: hashicorp/vault:1.16
+    container_name: vault
+    environment:
+      - VAULT_ADDR=${VAULT_ADDR}
+      - VAULT_CACERT=${VAULT_CACERT}
+    ports:
+      - 8200:8200
+    restart: always
+    networks:
+      - main
+    volumes:
+      - ./images/vault/vault-config.hcl:/vault/config/config.hcl
+      - ./volume/vault-data:/vault/file/
+      - ./images/vault/start-vault.sh:/./start-vault.sh
+      - ./ssl/certs:/etc/vault/certs
+      - ./ssl/private:/etc/vault/private
+    cap_add:
+      - IPC_LOCK
+    entrypoint: ["/bin/sh", "-c", "/start-vault.sh"]
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  vault-init:
+    image: hashicorp/vault:1.16
+    container_name: vault-init
+    restart: on-failure
+    networks:
+      - main
+    env_file: .env
+    environment:
+      - VAULT_ADDR=${VAULT_INIT_ADDR}
+      - MY_VAULT_TOKEN=${MY_VAULT_TOKEN}
+      - VAULT_CACERT=${VAULT_CACERT}
+    volumes:
+      - ./images/vault/vault-init.sh:/usr/local/bin/vault-init.sh
+      - ./volume/vault-data:/vault/file/
+      - ./ssl/certs:/etc/vault/certs
+      - ./ssl/private:/etc/vault/private
+    command: /usr/local/bin/vault-init.sh
+    depends_on:
+      - vault
+
+  redis:
+    container_name: redis
+    image: redis
+    restart: always
+    networks:
+      - main
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  main:
+    name: main
+    driver: bridge
+
+volumes:
+  vault-data:
+  postgres-data:

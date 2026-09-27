@@ -1,0 +1,25 @@
+@import url(https://fonts.google.com/specimen/Poetsen+One);
+
+.videobg{
+	position: fixed;
+    overflow: hidden;
+    top: 50%;
+    left: 50%;
+    min-width: 100%;
+    min-height: 100%;
+    width: auto;
+    height: auto;
+    transform: translateX(-50%) translateY(-45%);
+    z-index: -10;
+}
+
+/* Style du titre */
+.title {
+    position: absolute;
+    font-family: "Poetsen One";
+    font-size: 27px;
+    font-weight: bold;
+    color: var(--bouton_BG); /* Couleur du texte */
+    top: -3%;
+    left: 45%;
+  }
